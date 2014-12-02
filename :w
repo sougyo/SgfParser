@@ -12,9 +12,8 @@ data MToken = LeftParenthes  |
   deriving (Show, Eq)
 
 data MNode = MNode {
-  m_position :: SourcePos,
-  m_token    :: MToken
-} deriving (Show, Eq)
+  m_position :: 
+  m_token    ::
 
 hoge = terminate '(' LeftParenthes   <|>
        terminate ')' RightParenthes  <|>
@@ -24,15 +23,12 @@ hoge = terminate '(' LeftParenthes   <|>
        (many1 alphaNum >>= \s -> return $ Ident s)
   where terminate c m = try $ char c *> return m
 
-hoge2 = do p <- getPosition
-           t <- hoge
-           return $ MNode p t
+hoge2 = 
 
-sgfTokenParser = many1 $ spaces *> hoge2
+sgfTokenParser = many1 (spaces *> hoge)
 
-sgfParser = do mySatisfy $ \x -> (m_token x) == LeftParenthes
-               mySatisfy $ \x -> (m_token x) == Ident "hoge"
-               mySatisfy $ \x -> (m_token x) == RightParenthes
+sgfParser = do mySatisfy $ \x -> x == LeftParenthes
+               mySatisfy $ \x -> x == RightParenthes
 
 parseSgfToken input = case parse sgfTokenParser "" input of
      Left err  -> []
@@ -40,7 +36,7 @@ parseSgfToken input = case parse sgfTokenParser "" input of
 
 mySatisfy f =
   tokenPrim (\c -> show c)
-  (\pos c _cs -> m_position c)
+  (\pos c _cs -> )
   (\c -> if f c then Just c else Nothing)
               
 parseSgf input = case parse sgfParser "" input of
