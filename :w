@@ -15,12 +15,6 @@ data MNode = MNode {
   m_token    :: MToken
 } deriving (Show, Eq)
 
-isBracketBlock (BracketBlock _) = True
-isBracketBlock _                = False
-
-isPropIdent (PropIdent _) = True
-isPropIdent _             = False
-
 mToken = terminate '(' LeftParenthes   <|>
          terminate ')' RightParenthes  <|>
          terminate ';' Semicolon       <|>
@@ -31,41 +25,36 @@ mToken = terminate '(' LeftParenthes   <|>
     bracketBlock = fmap BracketBlock $ char '[' *> many (noneOf "[]") <* char ']'
     propIdentity = many1 upper >>= \s -> return $ PropIdent s
 
-nSatisfy f =
+mySatisfy f =
   tokenPrim (\c -> show c)
   (\pos c _cs -> m_position c)
   (\c -> if f c then Just c else Nothing)
 
-tSatisfy f = nSatisfy $ \x -> f $ m_token x
-
-tElem c = nSatisfy $ \x -> (m_token x) == c
-tProp s = nSatisfy $ \x -> case (m_token x) of
+myChar c = mySatisfy $ \x -> (m_token x) == c
+myProp s = mySatisfy $ \x -> case (m_token x) of
                                PropIdent s' -> s == s'
                                _            -> False
 
-data SProp = SProp MNode [MNode]
-  deriving (Show)
+isPropIdentity t = case t of
+                    PropIdent _ -> True
+                    _           -> False
 
-data SNode = SNode [SProp] | SNull
-  deriving (Show)
+myProp2 = mySatisfy $ \x -> isPropIdentity (m_token x)
 
-data SgfTreeNode = SgfTreeNode SNode [SgfTreeNode]
-  deriving (Show)
-
-node_tree_to_node (x:xs) yss = if null xs then SgfTreeNode x yss
-                               else SgfTreeNode x [node_tree_to_node xs yss]
+myBlock = mySatisfy $ \x -> case (m_token x) of
+                               BracketBlock _ -> True
+                               _              -> False
 
 sgfParser = do many1 s_gameTree
   where
-    s_gameTree = do tElem LeftParenthes
-                    s <- s_sequence
-                    t <- many s_gameTree
-                    tElem RightParenthes
-                    return $ node_tree_to_node s t
+    s_gameTree = do myChar LeftParenthes
+                    s_sequence
+                    many s_gameTree
+                    myChar RightParenthes
     s_sequence = many1 s_node
-    s_node     = tElem Semicolon *> (fmap SNode $ many s_property)
-    s_property = SProp <$> tSatisfy isPropIdent <*> many1 s_propValue
-    s_propValue = tSatisfy isBracketBlock
+    s_node     = myChar Semicolon *> many s_property
+    s_property = myProp2 *> many1 s_propValue
+    s_propValue = myBlock
 
 sgfTokenParser = many1 $ spaces *> mnToken
   where
@@ -79,5 +68,5 @@ parseSgf input = case parse sgfParser "" input of
   Left  err -> putStrLn $ show err
   Right val -> putStrLn $ show val
 
-main = let a = parseSgfToken "(;A[] ;WW[hgoehoge](;B[])(;CC[]))"
+main = let a = parseSgfToken "(;A[] ;WW[hgoehoge](;B[]))"
        in parseSgf a
