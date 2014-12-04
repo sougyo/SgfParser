@@ -7,7 +7,7 @@ data MToken = LeftParenthes       |
               RightParenthes      |
               Semicolon           |
               BracketBlock String |
-              PropIdent String
+              UcWord String
   deriving (Show, Eq)
 
 data MNode = MNode {
@@ -18,66 +18,78 @@ data MNode = MNode {
 isBracketBlock (BracketBlock _) = True
 isBracketBlock _                = False
 
-isPropIdent (PropIdent _) = True
-isPropIdent _             = False
+isUcWord (UcWord _) = True
+isUcWord _          = False
 
-mToken = terminate '(' LeftParenthes   <|>
-         terminate ')' RightParenthes  <|>
-         terminate ';' Semicolon       <|>
-         try bracketBlock              <|>
-         propIdentity
+mToken = mtoken '(' LeftParenthes  <|>
+         mtoken ')' RightParenthes <|>
+         mtoken ';' Semicolon      <|>
+         bracketBlock              <|>
+         ucWord
   where
-    terminate c m = try $ char c *> return m
-    bracketBlock = fmap BracketBlock $ char '[' *> many (noneOf "[]") <* char ']'
-    propIdentity = many1 upper >>= \s -> return $ PropIdent s
+    mtoken c m   = try $ char c *> return m
+    bracketBlock = try $ fmap BracketBlock $ char '[' *> text <* char ']'
+    ucWord       = fmap UcWord $ many1 upper
+    text         = many $ noneOf "]"
 
 nSatisfy f =
   tokenPrim (\c -> show c)
   (\pos c _cs -> m_position c)
   (\c -> if f c then Just c else Nothing)
 
-tSatisfy f = nSatisfy $ \x -> f $ m_token x
+data SColor = SB | SW
+  deriving (Show, Eq)
 
-tElem c = nSatisfy $ \x -> (m_token x) == c
-tProp s = nSatisfy $ \x -> case (m_token x) of
-                               PropIdent s' -> s == s'
-                               _            -> False
+data SValueType = SNone           |
+                  SNumber Integer |
+                  SText String    |
+                  SPoint Int Int
+  deriving (Show, Eq)
 
-data SProp = SProp MNode [MNode]
+data SProp a = SProp String [a]
   deriving (Show)
 
-data SNode = SNode [SProp] | SNull
+data SNode a = SNode [SProp a]
   deriving (Show)
 
-data SgfTreeNode = SgfTreeNode SNode [SgfTreeNode]
+data SgfTreeNode a = SgfTreeNode (SNode a) [SgfTreeNode a]
   deriving (Show)
 
-node_tree_to_node (x:xs) yss = if null xs then SgfTreeNode x yss
-                               else SgfTreeNode x [node_tree_to_node xs yss]
-
-sgfParser = do many1 s_gameTree
+string_to_cvalue :: SgfTreeNode String -> SgfTreeNode SValueType
+string_to_cvalue (SgfTreeNode n ts) = SgfTreeNode (hoge n) $ map string_to_cvalue ts
   where
-    s_gameTree = do tElem LeftParenthes
-                    s <- s_sequence
-                    t <- many s_gameTree
-                    tElem RightParenthes
-                    return $ node_tree_to_node s t
-    s_sequence = many1 s_node
-    s_node     = tElem Semicolon *> (fmap SNode $ many s_property)
-    s_property = SProp <$> tSatisfy isPropIdent <*> many1 s_propValue
-    s_propValue = tSatisfy isBracketBlock
+    hoge (SNode ps) = SNode (map piyo ps)
+    piyo (SProp ident texts) = SProp ident $ map (foo ident) texts
+    foo ident text = SNone
 
-sgfTokenParser = many1 $ spaces *> mnToken
+sgfParser = many1 gameTree
   where
-    mnToken = MNode <$> getPosition <*> mToken
+    gameTree     = do token LeftParenthes
+                      ns <- many1 node
+                      ts <- many gameTree
+                      token RightParenthes
+                      return $ makeGameTree ns ts
+    node         = token Semicolon *> (fmap SNode $ many property)
+    property     = SProp <$> propIdent <*> many1 propValue
+    propIdent    = fmap mtoken2s $ tSatisfy isUcWord
+    propValue    = fmap block2s  $ tSatisfy isBracketBlock
+    mtoken2s t   = case m_token t of UcWord w -> w
+    block2s  b   = case m_token b of BracketBlock s -> s
+    tSatisfy f   = nSatisfy $ \x -> f $ m_token x
+    token c      = nSatisfy $ \x -> (m_token x) == c
+    makeGameTree (n:ns) ts
+     | null ns   = SgfTreeNode n ts
+     | otherwise = SgfTreeNode n [makeGameTree ns ts]
 
 parseSgfToken input = case parse sgfTokenParser "" input of
      Left err  -> []
      Right val -> val
+  where 
+    sgfTokenParser = many1 $ spaces *> mnToken
+    mnToken = MNode <$> getPosition <*> mToken
 
 parseSgf input = case parse sgfParser "" input of
   Left  err -> putStrLn $ show err
-  Right val -> putStrLn $ show val
+  Right val -> putStrLn $ show $ map string_to_cvalue val
 
-main = let a = parseSgfToken "(;A[] ;WW[hgoehoge](;B[])(;CC[]))"
-       in parseSgf a
+main = parseSgf $ parseSgfToken "(;ROOT[])(;A[] ;WW[hgoehoge](;B[])(;CC[]))"
