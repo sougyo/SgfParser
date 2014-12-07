@@ -46,21 +46,17 @@ data SValueType = SNone           |
                   SPoint Int Int
   deriving (Show, Eq)
 
-data SProp a = SProp String [a]
+data SProp = SProp String [MNode]
   deriving (Show)
 
-data SNode a = SNode [SProp a]
+data SNode = SNode [SProp]
   deriving (Show)
 
-data SgfTreeNode a = SgfTreeNode (SNode a) [SgfTreeNode a]
+data SgfTreeNode = SgfTreeNode SNode [SgfTreeNode]
   deriving (Show)
 
-string_to_cvalue :: SgfTreeNode String -> SgfTreeNode SValueType
-string_to_cvalue (SgfTreeNode n ts) = SgfTreeNode (hoge n) $ map string_to_cvalue ts
-  where
-    hoge (SNode ps) = SNode (map piyo ps)
-    piyo (SProp ident texts) = SProp ident $ map (foo ident) texts
-    foo ident text = SNone
+--getParser ident = MNode <$> getPosition <*> (fmap BracketBlock $ many1 digit)
+getParser _ = nSatisfy $ \_ -> True  -- for debug
 
 sgfParser = many1 gameTree
   where
@@ -70,13 +66,12 @@ sgfParser = many1 gameTree
                       token RightParenthes
                       return $ makeGameTree ns ts
     node         = token Semicolon *> (fmap SNode $ many property)
-    property     = SProp <$> propIdent <*> many1 propValue
-    propIdent    = fmap mtoken2s $ tSatisfy isUcWord
-    propValue    = fmap block2s  $ tSatisfy isBracketBlock
-    mtoken2s t   = case m_token t of UcWord w -> w
+    property     = propIdent >>= \i -> fmap (SProp i) $ many1 (getParser i)
+    propIdent    = fmap ucword2s $ tSatisfy isUcWord
+    ucword2s t   = case m_token t of UcWord w -> w
     block2s  b   = case m_token b of BracketBlock s -> s
+    token c      = nSatisfy $ \x -> m_token x == c
     tSatisfy f   = nSatisfy $ \x -> f $ m_token x
-    token c      = nSatisfy $ \x -> (m_token x) == c
     makeGameTree (n:ns) ts
      | null ns   = SgfTreeNode n ts
      | otherwise = SgfTreeNode n [makeGameTree ns ts]
@@ -90,6 +85,6 @@ parseSgfToken input = case parse sgfTokenParser "" input of
 
 parseSgf input = case parse sgfParser "" input of
   Left  err -> putStrLn $ show err
-  Right val -> putStrLn $ show $ map string_to_cvalue val
+  Right val -> putStrLn $ show val
 
-main = parseSgf $ parseSgfToken "(;ROOT[])(;A[] ;WW[hgoehoge](;B[])(;CC[]))"
+main = parseSgf $ parseSgfToken "(;MN[333])"
