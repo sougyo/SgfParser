@@ -3,7 +3,7 @@ import Control.Applicative ((<*), (*>), (<*>), (<$>))
 import Text.Parsec.Prim (tokenPrim, getPosition)
 import Text.Parsec.Pos (SourcePos)
 import Data.List (intercalate)
-import Control.Monad (join)
+import Control.Monad (join, when)
 
 data MToken = LeftParenthes       |
               RightParenthes      |
@@ -30,7 +30,7 @@ mToken = mtoken '(' LeftParenthes  <|>
 
 data SProp a = SProp {
   s_ident  :: String,
-  s_blocks :: [a]
+  s_blocks :: a
 } deriving (Show)
 
 data SgfTreeNode a = SgfTreeNode {
@@ -47,8 +47,10 @@ sgfParser s2v = SgfTreeNode [] <$> many1 gameTree
                       return $ makeGameTree ns ts
     node         = token Semicolon *> many property
     property     = do ident <- propIdent
-                      pvals <- many1 . propValue $ s2v ident
-                      return $ SProp ident pvals
+                      pvals <- many1 propValue
+                      case s2v ident pvals of
+                        Just x  -> return $ SProp ident x
+                        Nothing -> fail "hoge"
     makeGameTree (n:ns) ts
      | null ns   = SgfTreeNode n ts
      | otherwise = SgfTreeNode n [makeGameTree ns ts]
@@ -57,8 +59,8 @@ sgfParser s2v = SgfTreeNode [] <$> many1 gameTree
     propIdent    = gen_p $ \n -> case m_token n of
                      UcWord s -> Just s
                      _        -> Nothing
-    propValue f  = gen_p $ \n -> case m_token n of
-                     BracketBlock s -> join $ Just (f s)
+    propValue    = gen_p $ \n -> case m_token n of
+                     BracketBlock s -> Just s
                      _              -> Nothing
 
 
@@ -78,7 +80,9 @@ data ValueType a b c =
     VSimpleText String      |
     VPoint      a           |
     VMove       b           |
-    VStone      c
+    VStone      c           |
+    VCompose    [ValueType a b c] |
+    VPair       (ValueType a b c, ValueType a b c)
   deriving (Show, Eq)
 
 runValueParser p s = case parse p "" s of
@@ -117,11 +121,11 @@ move_parser str = runValueParser _parser str
 
 simple_text_parser str = Just $ VSimpleText str
 
-str2val :: String -> String -> Maybe (ValueType () (Int, Int) ())
-str2val ident str = case (lookup ident mydict) of
-    Just f  -> f str
-    Nothing -> any_parser str
-  where mydict = [
+str2val :: String -> [String] -> Maybe (ValueType () (Int, Int) ())
+str2val ident strs = case (lookup ident parser_dict) of
+    Just f  -> Just VNone
+    Nothing -> Nothing
+  where parser_dict = [
               ("B" , move_parser),
               ("KO", move_parser),
               ("MN", move_parser),
