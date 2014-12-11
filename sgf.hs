@@ -71,26 +71,26 @@ data VDoubleType = VOne | VTwo
 data VColorType = VBlack | VWhite
   deriving (Show, Eq)
 
-data ValueType a b c =
+data ValueType p m s =
     VNone                   |
     VNumber     Integer     |
     VReal       Double      |
     VDouble     VDoubleType |
     VColor      VColorType  |
+    VText       String      |
     VSimpleText String      |
-    VPoint      a           |
-    VMove       b           |
-    VStone      c           |
-    VCompose    [ValueType a b c] |
-    VPair       (ValueType a b c, ValueType a b c)
+    VPoint      p           |
+    VMove       m           |
+    VStone      s           |
+    VList [ValueType p m s] |
+    VPair (ValueType p m s, ValueType p m s)
   deriving (Show, Eq)
 
 runValueParser p s = case parse p "" s of
   Left  err -> Nothing
   Right val -> Just val
 
-any_parser _ = Just VNone
-none_parser str = if null str then Just VNone else Nothing
+none_parser = just_one $ \str -> if null str then Just VNone else Nothing
 
 number_parser str = runValueParser _parser str
   where
@@ -110,7 +110,7 @@ color_parser str
   | str == "W" = Just $ VColor VWhite
   | otherwise  = Nothing
 
-move_parser :: String -> Maybe (ValueType () (Int, Int) ())
+
 move_parser str = runValueParser _parser str
   where
     _parser = fmap VMove $ fmap (\(x, y) -> (0, 0)) $ do
@@ -119,40 +119,108 @@ move_parser str = runValueParser _parser str
                 eof
                 return (a, b)
 
+text_parser str = Just $ VText str
 simple_text_parser str = Just $ VSimpleText str
+
+just_one p s = if length s == 1 then join . Just . p . head $ s else Nothing
+list_of  p s = fmap VList $ foldr (\x y -> x >>= \z -> fmap (z:) y) (Just []) $ map p s
+elist_of p s = if length s == 1 && null (head s) then Just VNone
+               else list_of p s
+
+list_of_stone _ = Nothing
+list_of_point _ = Nothing
+elist_of_point _ = Nothing
+list_of_composition_point_point _ = Nothing
+list_of_composition_point_simple_text _ = Nothing
+list_of_composition_simple_text_simple_text _ = Nothing
+number_or_composition_number_number _ = Nothing
+none_or_composition_number_simple_text _ = Nothing
 
 str2val :: String -> [String] -> Maybe (ValueType () (Int, Int) ())
 str2val ident strs = case (lookup ident parser_dict) of
-    Just f  -> Just VNone
+    Just p  -> p strs
     Nothing -> Nothing
   where parser_dict = [
-              ("B" , move_parser),
-              ("KO", move_parser),
-              ("MN", move_parser),
-              ("W" , move_parser),
-              ("PL", color_parser),
-              ("DM", double_parser),
-              ("GB", double_parser),
-              ("GW", double_parser),
-              ("HO", double_parser),
-              ("N" , simple_text_parser),
-              ("UC", double_parser),
-              ("V" , real_parser),
-              ("BM", double_parser),
+              -- Move Properties
+              ("B" , just_one move_parser),
+              ("KO", none_parser),
+              ("MN", just_one number_parser),
+              ("W" , just_one move_parser),
+
+              -- Setup Properties
+              ("AB", list_of_stone),
+              ("AE", list_of_stone),
+              ("AW", list_of_stone),
+              ("PL", just_one color_parser),
+              
+              -- Node annotation properties
+              ("C" , just_one text_parser),
+              ("DM", just_one double_parser),
+              ("GB", just_one double_parser),
+              ("GW", just_one double_parser),
+              ("HO", just_one double_parser),
+              ("N" , just_one simple_text_parser),
+              ("UC", just_one double_parser),
+              ("V" , just_one real_parser),
+
+              -- Move annotation properties
+              ("BM", just_one double_parser),
               ("DO", none_parser),
-              ("IT", move_parser),
-              ("TE", double_parser),
-              ("CA", simple_text_parser),
-              ("FF", number_parser),
-              ("GM", number_parser),
-              ("ST", number_parser),
-              ("AN", simple_text_parser),
-              ("BR", simple_text_parser),
-              ("BT", simple_text_parser),
-              ("CP", simple_text_parser),
-              ("DT", simple_text_parser),
-              ("EV", simple_text_parser),
-              ("GN", simple_text_parser)
+              ("IT", just_one move_parser),
+              ("TE", just_one double_parser),
+
+              -- Markup properties
+              ("AR", list_of_composition_point_point),
+              ("CR", list_of_point),
+              ("DD", elist_of_point),
+              ("LB", list_of_composition_point_simple_text),
+              ("LN", list_of_composition_point_point),
+              ("MA", list_of_point),
+              ("SL", list_of_point),
+              ("SQ", list_of_point),
+              ("TR", list_of_point),
+
+              -- Root properties
+              ("AP", list_of_composition_simple_text_simple_text),
+              ("CA", just_one simple_text_parser),
+              ("FF", just_one number_parser),
+              ("GM", just_one number_parser),
+              ("ST", just_one number_parser),
+              ("SZ", number_or_composition_number_number),
+
+              -- Game info properties
+              ("AN", just_one simple_text_parser),
+              ("BR", just_one simple_text_parser),
+              ("BT", just_one simple_text_parser),
+              ("CP", just_one simple_text_parser),
+              ("DT", just_one simple_text_parser),
+              ("EV", just_one simple_text_parser),
+              ("GN", just_one simple_text_parser),
+              ("GC", just_one text_parser),
+              ("ON", just_one simple_text_parser),
+              ("OT", just_one simple_text_parser),
+              ("PB", just_one simple_text_parser),
+              ("PC", just_one simple_text_parser),
+              ("PW", just_one simple_text_parser),
+              ("RE", just_one simple_text_parser),
+              ("RO", just_one simple_text_parser),
+              ("RU", just_one simple_text_parser),
+              ("SO", just_one simple_text_parser),
+              ("TM", just_one real_parser),
+              ("US", just_one simple_text_parser),
+              ("WR", just_one simple_text_parser),
+              ("WT", just_one simple_text_parser),
+
+              -- Timing properties
+              ("BL", just_one real_parser),
+              ("OB", just_one number_parser),
+              ("OW", just_one number_parser),
+              ("WL", just_one real_parser),
+
+              -- Timing properties
+              ("FG", none_or_composition_number_simple_text),
+              ("PM", just_one number_parser),
+              ("VW", elist_of_point)
             ]
 
 
@@ -194,4 +262,4 @@ parseSgf input = case parse (sgfParser str2val) "" input of
   Left  err -> putStrLn $ show err
   Right val -> putStrLn $ show $ val
 
-main = parseSgf $ parseSgfToken "(;B[cc];W[aa];B[ww](;DO[][]))"
+main = parseSgf $ parseSgfToken "(;B[cc](;W[aa])(;W[cc]))"
