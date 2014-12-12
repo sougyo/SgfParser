@@ -24,7 +24,7 @@ mToken = mtoken '(' LeftParenthes  <|>
          ucWord
   where
     mtoken c m   = try $ char c *> return m
-    bracketBlock = try $ fmap BracketBlock $ char '[' *> text <* char ']'
+    bracketBlock = try $ between (char '[') (char ']') $ fmap BracketBlock text
     ucWord       = fmap UcWord $ many1 upper
     text         = many $ noneOf "]"
 
@@ -40,17 +40,14 @@ data SgfTreeNode a = SgfTreeNode {
 
 sgfParser s2v = SgfTreeNode [] <$> many1 gameTree
   where
-    gameTree     = do token LeftParenthes
-                      ns <- many1 node
-                      ts <- many gameTree
-                      token RightParenthes
-                      return $ makeGameTree ns ts
+    gameTree     = between (token LeftParenthes) (token RightParenthes) $
+                      makeGameTree <$> many1 node <*> many gameTree
     node         = token Semicolon *> many property
     property     = do ident <- propIdent
                       pvals <- many1 propValue
                       case s2v ident pvals of
                         Just x  -> return $ SProp ident x
-                        Nothing -> fail "hoge"
+                        Nothing -> fail $ "failed to parse " ++ (show pvals)
     makeGameTree (n:ns) ts
      | null ns   = SgfTreeNode n ts
      | otherwise = SgfTreeNode n [makeGameTree ns ts]
@@ -92,13 +89,19 @@ runValueParser p s = case parse p "" s of
 
 none_parser = just_one $ \str -> if null str then Just VNone else Nothing
 
-number_parser str = runValueParser _parser str
-  where
-    _parser = fmap VNumber $ fmap (\x -> ((read x) :: Integer)) $ many1 digit <* eof
+numstr_parser = (++) <$> plus_minus <*> many1 digit
+  where plus_minus = option "" $ fmap return $ oneOf "+-"
 
+realstr_parser = (++) <$> numstr_parser <*> decimal_places
+  where decimal_places = option "" $ (:) <$> char '.' <*> many1 digit
+
+number_parser str = runValueParser _parser str
+  where _parser = fmap VNumber $ fmap to_integer $ numstr_parser <* eof
+        to_integer x = read x :: Integer
+                
 real_parser str = runValueParser _parser str
-  where
-    _parser = fmap VReal $ fmap (\x -> ((read x) :: Double)) $ many1 digit <* eof
+  where _parser = fmap VReal $ fmap to_double $ realstr_parser <* eof
+        to_double x = read x :: Double
 
 double_parser str
   | str == "1" = Just $ VDouble VOne
@@ -109,7 +112,6 @@ color_parser str
   | str == "B" = Just $ VColor VBlack
   | str == "W" = Just $ VColor VWhite
   | otherwise  = Nothing
-
 
 move_parser str = runValueParser _parser str
   where
@@ -122,7 +124,7 @@ move_parser str = runValueParser _parser str
 text_parser str = Just $ VText str
 simple_text_parser str = Just $ VSimpleText str
 
-just_one p s = if length s == 1 then join . Just . p . head $ s else Nothing
+just_one p s = when (length s /= 1) Nothing >> (join . Just . p . head $ s)
 list_of  p s = fmap VList $ foldr (\x y -> x >>= \z -> fmap (z:) y) (Just []) $ map p s
 elist_of p s = if length s == 1 && null (head s) then Just VNone
                else list_of p s
