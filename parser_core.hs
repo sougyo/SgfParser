@@ -210,25 +210,25 @@ base_dict point_parser move_parser stone_parser = [
 
 mntokenSgfParser dict = SgfTreeNode [] <$> many1 gameTree
   where
-    gameTree     = between (token LeftParenthes) (token RightParenthes) $
-                      makeGameTree <$> many1 node <*> many gameTree
-    node         = token Semicolon *> many property
-    property     = do ident <- propIdent
-                      pvals <- many1 propValue
-                      case (str2val dict) ident pvals of
-                        Just x  -> return $ SProp ident x
-                        Nothing -> fail $ "failed to parse " ++ (show pvals)
+    gameTree  = between (token LeftParenthes) (token RightParenthes) $
+                  makeGameTree <$> many1 node <*> many gameTree
+    node      = token Semicolon *> many property
+    property  = do ident <- propIdent
+                   pvals <- many1 propValue
+                   case (str2val dict) ident pvals of
+                     Just x  -> return $ SProp ident x
+                     Nothing -> fail $ "failed to parse " ++ (show pvals)
     makeGameTree (n:ns) ts
       | null ns   = SgfTreeNode n ts
       | otherwise = SgfTreeNode n [makeGameTree ns ts]
-    gen_p m      = tokenPrim (\c -> show c) (\pos c _cs -> m_position c) m
-    token c      = gen_p $ \n -> if m_token n == c then Just n else Nothing
-    propIdent    = gen_p $ \n -> case m_token n of
-                     UcWord s -> Just s
-                     _        -> Nothing
-    propValue    = gen_p $ \n -> case m_token n of
-                     BracketBlock s -> Just s
-                     _              -> Nothing
+    gen_p m   = tokenPrim (\c -> show c) (\pos c _cs -> m_position c) m
+    token c   = gen_p $ \n -> if m_token n == c then Just n else Nothing
+    propIdent = gen_p $ \n -> case m_token n of
+                  UcWord s -> Just s
+                  _        -> Nothing
+    propValue = gen_p $ \n -> case m_token n of
+                  BracketBlock s -> Just s
+                  _              -> Nothing
     str2val dict ident strs = case (lookup ident dict) of
       Just p  -> p strs
       Nothing -> Nothing
