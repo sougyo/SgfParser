@@ -104,28 +104,26 @@ color_parser = fmap VColor $
   char 'B' *> return VBlack <|>
   char 'W' *> return VWhite
 
-text_parser_base escape_colon keep_eol = 
-    try (char '\\' *> eol *> return "")     <|>
-    try (char '\\' *> space *> return " ")  <|>
-    try (char '\\' *> (return <$> anyChar)) <|>
-    try (eol_parser keep_eol)               <|>
-    try (space *> return " ")               <|>
-    return <$> noneOf (escape_parser escape_colon)
+text_parser_base escape_chars keep_eol = 
+    try (bslash *> eol *> return "")     <|>
+    try (bslash *> space *> return " ")  <|>
+    try (bslash *> (return <$> anyChar)) <|>
+    try (eol_parser keep_eol)            <|>
+    try (space *> return " ")            <|>
+    return <$> noneOf escape_chars
   where
+      bslash = char '\\'
       eol_parser keep_eol
         | keep_eol   = eol
         | otherwise  = return <$> oneOf ""
-      escape_parser escape_colon
-        | escape_colon = "]\\:"
-        | otherwise    = "]\\"
       eol = try (string "\n\r") <|>
             try (string "\r\n") <|>
             string "\n"         <|>
             string "\r"
 
-text_parser    = VText       <$> concat <$> many (text_parser_base False True)
-stext_parser   = VSimpleText <$> concat <$> many (text_parser_base False False)
-c_stext_parser = VSimpleText <$> concat <$> many (text_parser_base True  False)
+text_parser    = VText       <$> concat <$> many (text_parser_base "]\\"  True)
+stext_parser   = VSimpleText <$> concat <$> many (text_parser_base "]\\"  False)
+c_stext_parser = VSimpleText <$> concat <$> many (text_parser_base "]\\:" False)
 
 base_dict point_parser move_parser stone_parser = [
     -- Move Properties
