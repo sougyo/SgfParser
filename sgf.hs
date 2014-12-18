@@ -3,7 +3,7 @@ import Control.Applicative ((<*), (*>), (<*>), (<$>))
 import Text.Parsec.Prim (tokenPrim, getPosition)
 import Text.Parsec.Pos (SourcePos)
 import Data.List (intercalate)
-import Control.Monad (join, when)
+import Control.Monad (join, sequence, when)
 
 data MToken = LeftParenthes       |
               RightParenthes      |
@@ -86,7 +86,7 @@ runValueParser p s = case parse (p <* eof) "" s of
   Right val -> Just val
 
 just_one p s = when (length s /= 1) Nothing >> (runValueParser p $ head s)
-list_of  p s = fmap VList $ foldr (\x y -> x >>= \z -> fmap (z:) y) (Just []) $ map (runValueParser p) s
+list_of  p s = fmap VList $ sequence $ map (runValueParser p) s
 elist_of p s = if length s == 1 && null (head s) then Just VNone
                else list_of p s
 
@@ -98,7 +98,8 @@ eol = try (string "\n\r") <|>
 none_parser = string "" *> return VNone
 
 numstr_parser = (++) <$> plus_minus <*> many1 digit
-  where plus_minus = option "" $ fmap return $ oneOf "+-"
+  where plus_minus = try (char '+' *> return "") <|>
+                     option "" (string "-")
 
 number_parser = VNumber . read <$> numstr_parser
 
@@ -113,21 +114,28 @@ color_parser = fmap VColor $
   char 'B' *> return VBlack <|>
   char 'W' *> return VWhite
 
-text_parser = VText <$> concat <$> many hoge
+text_parser_base escape_colon keep_eol = 
+    try (char '\\' *> eol *> return "")     <|>
+    try (char '\\' *> space *> return " ")  <|>
+    try (char '\\' *> (return <$> anyChar)) <|>
+    try (eol_parser keep_eol)               <|>
+    try (space *> return " ")               <|>
+    return <$> noneOf (escape_parser escape_colon)
   where
-    hoge = try (char '\\' *> eol *> return "")     <|>
-           try (char '\\' *> (return <$> anyChar)) <|>
-           return <$> noneOf "]"
+      eol_parser keep_eol
+        | keep_eol   = eol
+        | otherwise  = return <$> oneOf ""
+      escape_parser escape_colon
+        | escape_colon = "]\\:"
+        | otherwise  = "]\\"
 
-stext_parser = VSimpleText <$> concat <$> many hoge
-  where
-    hoge = try (char '\\' *> eol *> return "")     <|>
-           try (char '\\' *> space *> return " ")  <|>
-           try (char '\\' *> (return <$> anyChar)) <|>
-           try (space *> return " ") <|>
-           return <$> noneOf "]"
+text_parser   = VText       <$> concat <$> many (text_parser_base False True)
 
-move_parser  = fmap VMove $ (,) <$> letter <*> letter
+stext_parser  = VSimpleText <$> concat <$> many (text_parser_base False False)
+
+cstext_parser = VSimpleText <$> concat <$> many (text_parser_base True  False)
+
+move_parser  = fmap VMove  $ (,) <$> letter <*> letter
 
 stone_parser = fmap VStone $ (,) <$> letter <*> letter
 
@@ -141,20 +149,20 @@ composition_of p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
 list_of_stone    = list_of  stone_parser
 list_of_point    = list_of  lpoint_parser
 elist_of_point   = elist_of lpoint_parser
-lofc_point_point = list_of $ composition_of lpoint_parser lpoint_parser
-lofc_point_stext = list_of $ composition_of lpoint_parser stext_parser
-lofc_stext_stext = list_of $ composition_of stext_parser  stext_parser
-sz_parser        = try (composition_of number_parser number_parser) <|> number_parser
-fg_parser        = try (composition_of number_parser stext_parser) <|> none_parser
+lofc_point_point = list_of $ composition_of point_parser  point_parser
+lofc_point_stext = list_of $ composition_of point_parser  cstext_parser
+lofc_stext_stext = list_of $ composition_of cstext_parser cstext_parser
+sz_parser        = try (composition_of number_parser number_parser)  <|> number_parser
+fg_parser        = try (composition_of number_parser cstext_parser)  <|> none_parser
 
 type IgoMoveType = (Char, Char)
 type IgoType = ValueType IgoMoveType IgoMoveType IgoMoveType
 
-str2val :: (Eq a) => [(a, [String] -> Maybe IgoType)] -> a -> [String] -> Maybe IgoType
 str2val dict ident strs = case (lookup ident dict) of
     Just p  -> p strs
     Nothing -> Nothing
 
+parser_dict :: [(String, [String] -> Maybe IgoType)]
 parser_dict = [
     -- Move Properties
     ("B" , just_one move_parser),
@@ -257,7 +265,7 @@ instance (Show a) => Show (SgfTreeNode a) where
       helper3 d hoges = let filtered = filter (\x -> h_dy x == d) hoges
                         in if null filtered then "" else 
                            show_filtered filtered ++ "\n" ++ (helper3 (d + 1) hoges)
-      show_snode ps = intercalate ":" $ map (show . s_ident) ps
+      show_snode ps = intercalate ":" $ map show ps
       show_filtered filtered = helper4 0 filtered
       helper4 _ []     = ""
       helper4 d (f:fs) = if d < 10 * h_dx f then " " ++ helper4 (d + 1) (f:fs)
@@ -276,4 +284,4 @@ parseSgf input = case parse (sgfParser (str2val parser_dict)) "" input of
   Left  err -> putStrLn $ show err
   Right val -> putStrLn $ show $ val
 
-main = parseSgf $ parseSgfToken "(;B[cc](;W[aa])(;US[hoge\nhoge]))"
+main = parseSgf $ parseSgfToken "(;LB[cc:a\\:a];GC[aa:\na];ON[aa\na];CR[cc][aa:aa][aa];SZ[+33333:-32494329](;W[aa])(;US[hoge\nho\tge]))"
