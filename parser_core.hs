@@ -7,9 +7,9 @@ module SgfParser
     just_one,
     list_of,
     elist_of,
-    c_list_of,
-    c_elist_of,
-    composition_of,
+    point_list_of,
+    point_elist_of,
+    compose,
     none_parser,
     number_parser,
     real_parser,
@@ -79,11 +79,11 @@ just_one p s = when (length s /= 1) Nothing >> (parseMaybe p $ head s)
 list_of  p s = fmap VList $ sequence $ map (parseMaybe p) s
 elist_of p s = if length s == 1 && null (head s) then Just VNone
                else list_of p s
-c_list_of  p = list_of  $ c_list_helper p
-c_elist_of p = elist_of $ c_list_helper p
-c_list_helper p = try (composition_of p p) <|> p
+point_list_of  p = list_of  $ point_list_helper p
+point_elist_of p = elist_of $ point_list_helper p
+point_list_helper p = try (compose p p) <|> p
 
-composition_of p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
+compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
 
 none_parser = string "" *> return VNone
 
@@ -135,9 +135,9 @@ base_dict point_parser move_parser stone_parser = [
     ("W" , just_one move_parser),
 
     -- Setup Properties
-    ("AB", list_of  stone_parser),
-    ("AE", list_of  stone_parser),
-    ("AW", list_of  stone_parser),
+    ("AB", list_of stone_parser),
+    ("AE", list_of stone_parser),
+    ("AW", list_of stone_parser),
     ("PL", just_one color_parser),
     
     -- Node annotation properties
@@ -157,23 +157,23 @@ base_dict point_parser move_parser stone_parser = [
     ("TE", just_one double_parser),
 
     -- Markup properties
-    ("AR", list_of $ composition_of point_parser point_parser),
-    ("CR", c_list_of point_parser),
-    ("DD", c_elist_of point_parser),
-    ("LB", list_of $ composition_of point_parser c_stext_parser),
-    ("LN", list_of $ composition_of point_parser point_parser),
-    ("MA", c_list_of point_parser),
-    ("SL", c_list_of point_parser),
-    ("SQ", c_list_of point_parser),
-    ("TR", c_list_of point_parser),
+    ("AR", list_of $ compose point_parser point_parser),
+    ("CR", point_list_of point_parser),
+    ("DD", point_elist_of point_parser),
+    ("LB", list_of $ compose point_parser c_stext_parser),
+    ("LN", list_of $ compose point_parser point_parser),
+    ("MA", point_list_of point_parser),
+    ("SL", point_list_of point_parser),
+    ("SQ", point_list_of point_parser),
+    ("TR", point_list_of point_parser),
 
     -- Root properties
-    ("AP", list_of $ composition_of c_stext_parser c_stext_parser),
+    ("AP", list_of $ compose c_stext_parser c_stext_parser),
     ("CA", just_one stext_parser),
     ("FF", just_one number_parser),
     ("GM", just_one number_parser),
     ("ST", just_one number_parser),
-    ("SZ", just_one $ try (composition_of number_parser number_parser) <|> number_parser),
+    ("SZ", just_one $ try (compose number_parser number_parser) <|> number_parser),
 
     -- Game info properties
     ("AN", just_one stext_parser),
@@ -205,9 +205,9 @@ base_dict point_parser move_parser stone_parser = [
     ("WL", just_one real_parser),
 
     -- Timing properties
-    ("FG", just_one $ try (composition_of number_parser c_stext_parser) <|> none_parser),
+    ("FG", just_one $ try (compose number_parser c_stext_parser) <|> none_parser),
     ("PM", just_one number_parser),
-    ("VW", c_elist_of point_parser)
+    ("VW", point_elist_of point_parser)
   ]
 
 mntokenSgfParser dict = SgfTreeNode [] <$> many1 gameTree

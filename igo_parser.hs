@@ -1,11 +1,8 @@
-module SgfIgoParser 
-  ( IgoType,
-    igo_dict
-  ) where
+module SgfIgoParser (igo_dict) where
 
 import SgfParser
-import Text.ParserCombinators.Parsec
-import Control.Applicative ((<*), (*>), (<*>), (<$>))
+import Text.ParserCombinators.Parsec (letter)
+import Control.Applicative ((<*>), (<$>))
 
 type IgoType = ValueType (Char, Char) (Char, Char) (Char, Char)
 
@@ -18,5 +15,5 @@ igo_dict = base ++ igo
     stone_parser = fmap VStone $ (,) <$> letter <*> letter
     igo = [ ("HA", just_one number_parser),
             ("KM", just_one real_parser),
-            ("TB", c_elist_of point_parser),
-            ("TW", c_elist_of point_parser) ]
+            ("TB", point_elist_of point_parser),
+            ("TW", point_elist_of point_parser) ]
