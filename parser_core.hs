@@ -26,7 +26,7 @@ import Text.ParserCombinators.Parsec
 import Control.Applicative ((<*), (*>), (<*>), (<$>))
 import Text.Parsec.Prim (tokenPrim, getPosition)
 import Text.Parsec.Pos (SourcePos)
-import Control.Monad (join, sequence, when)
+import Control.Monad (sequence, when)
 
 data MToken = LeftParenthes       |
               RightParenthes      |
@@ -71,59 +71,45 @@ data ValueType p m s =
     VPair (ValueType p m s, ValueType p m s)
   deriving (Show, Eq)
 
-parseMaybe p s = case parse (p <* eof) "" s of
-  Left  err -> Nothing
-  Right val -> Just val
+--
 
-just_one p s = when (length s /= 1) Nothing >> (parseMaybe p $ head s)
-list_of  p s = fmap VList $ sequence $ map (parseMaybe p) s
-elist_of p s = if length s == 1 && null (head s) then Just VNone
-               else list_of p s
-point_list_of  p = list_of  $ point_list_helper p
-point_elist_of p = elist_of $ point_list_helper p
-point_list_helper p = try (compose p p) <|> p
-
-compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
-
-none_parser = string "" *> return VNone
-
-numstr_parser = (++) <$> plus_minus <*> many1 digit
-  where plus_minus = try (char '+' *> return "") <|>
-                     option "" (string "-")
-
-number_parser = VNumber . read <$> numstr_parser
-
-real_parser = fmap (VReal . read) $ (++) <$> numstr_parser <*> decimal_places
-  where decimal_places = option "" $ (:) <$> char '.' <*> many1 digit
-
-double_parser = fmap VDouble $
-  char '1' *> return VOne <|>
-  char '2' *> return VTwo
-
-color_parser = fmap VColor $
-  char 'B' *> return VBlack <|>
-  char 'W' *> return VWhite
-
-text_parser_base escape_chars keep_eol = 
-    try (bslash *> eol *> return "")     <|>
-    try (bslash *> space *> return " ")  <|>
-    try (bslash *> (return <$> anyChar)) <|>
-    try (eol_parser keep_eol)            <|>
-    try (space *> return " ")            <|>
-    return <$> noneOf escape_chars
+sgfParser dict = SgfTreeNode [] <$> many1 gameTree
   where
-      bslash = char '\\'
-      eol_parser keep_eol
-        | keep_eol   = eol
-        | otherwise  = return <$> oneOf ""
-      eol = try (string "\n\r") <|>
-            try (string "\r\n") <|>
-            string "\n"         <|>
-            string "\r"
+    gameTree  = between (token LeftParenthes) (token RightParenthes) $
+                  makeGameTree <$> many1 node <*> many gameTree
+    node      = token Semicolon *> many property
+    property  = do ident <- propIdent
+                   pvals <- many1 propValue
+                   case (str2val dict) ident pvals of
+                     Just x  -> return $ SProp ident x
+                     Nothing -> fail $ "failed to parse " ++ show pvals
+    makeGameTree (n:ns) ts
+      | null ns   = SgfTreeNode n ts
+      | otherwise = SgfTreeNode n [makeGameTree ns ts]
+    gen_p m   = tokenPrim (\c -> show c) (\pos c _cs -> m_position c) m
+    token c   = gen_p $ \n -> if m_token n == c then Just n else Nothing
+    propIdent = gen_p $ \n -> case m_token n of
+                  UcWord s -> Just s
+                  _        -> Nothing
+    propValue = gen_p $ \n -> case m_token n of
+                  BracketBlock s -> Just s
+                  _              -> Nothing
+    str2val dict ident strs = case (lookup ident dict) of
+      Just p  -> p strs
+      Nothing -> Nothing
 
-text_parser    = VText       <$> concat <$> many (text_parser_base "]\\"  True)
-stext_parser   = VSimpleText <$> concat <$> many (text_parser_base "]\\"  False)
-c_stext_parser = VSimpleText <$> concat <$> many (text_parser_base "]\\:" False)
+mToken = mtoken '(' LeftParenthes  <|>
+         mtoken ')' RightParenthes <|>
+         mtoken ';' Semicolon      <|>
+         bracketBlock              <|>
+         ucWord
+  where
+    mtoken c m   = try $ char c *> return m
+    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
+    ucWord       = UcWord <$> many1 upper
+    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
+
+--
 
 base_dict point_parser move_parser stone_parser = [
     -- Move Properties
@@ -208,45 +194,11 @@ base_dict point_parser move_parser stone_parser = [
     ("VW", point_elist_of point_parser)
   ]
 
-mntokenSgfParser dict = SgfTreeNode [] <$> many1 gameTree
-  where
-    gameTree  = between (token LeftParenthes) (token RightParenthes) $
-                  makeGameTree <$> many1 node <*> many gameTree
-    node      = token Semicolon *> many property
-    property  = do ident <- propIdent
-                   pvals <- many1 propValue
-                   case (str2val dict) ident pvals of
-                     Just x  -> return $ SProp ident x
-                     Nothing -> fail $ "failed to parse " ++ (show pvals)
-    makeGameTree (n:ns) ts
-      | null ns   = SgfTreeNode n ts
-      | otherwise = SgfTreeNode n [makeGameTree ns ts]
-    gen_p m   = tokenPrim (\c -> show c) (\pos c _cs -> m_position c) m
-    token c   = gen_p $ \n -> if m_token n == c then Just n else Nothing
-    propIdent = gen_p $ \n -> case m_token n of
-                  UcWord s -> Just s
-                  _        -> Nothing
-    propValue = gen_p $ \n -> case m_token n of
-                  BracketBlock s -> Just s
-                  _              -> Nothing
-    str2val dict ident strs = case (lookup ident dict) of
-      Just p  -> p strs
-      Nothing -> Nothing
-
-mToken = mtoken '(' LeftParenthes  <|>
-         mtoken ')' RightParenthes <|>
-         mtoken ';' Semicolon      <|>
-         bracketBlock              <|>
-         ucWord
-  where
-    mtoken c m   = try $ char c *> return m
-    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
-    ucWord       = UcWord <$> many1 upper
-    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
+--
 
 parseSgf dict input = parseMTokenSgf dict $ parseCharSgf input
   where
-    parseMTokenSgf dict input = case parse (mntokenSgfParser dict) "" input of
+    parseMTokenSgf dict input = case parse (sgfParser dict) "" input of
       Left  err -> putStrLn $ show err
       Right val -> putStrLn $ show $ val
     parseCharSgf input = case parse sgfTokenParser "" input of
@@ -254,4 +206,69 @@ parseSgf dict input = parseMTokenSgf dict $ parseCharSgf input
       Right val -> val
     sgfTokenParser = many1 $ spaces *> mnToken
     mnToken = MNode <$> getPosition <*> mToken
+--
+
+none_parser = string "" *> return VNone
+
+numstr_parser = (++) <$> plus_minus <*> many1 digit
+  where plus_minus = try (char '+' *> return "") <|>
+                     option "" (string "-")
+
+number_parser = VNumber . read <$> numstr_parser
+
+real_parser = fmap (VReal . read) $ (++) <$> numstr_parser <*> decimal_places
+  where decimal_places = option "" $ (:) <$> char '.' <*> many1 digit
+
+double_parser = fmap VDouble $
+  char '1' *> return VOne <|>
+  char '2' *> return VTwo
+
+color_parser = fmap VColor $
+  char 'B' *> return VBlack <|>
+  char 'W' *> return VWhite
+
+text_parser    = VText       <$> concat <$> many (text_parser_base "]\\"  True)
+
+stext_parser   = VSimpleText <$> concat <$> many (text_parser_base "]\\"  False)
+
+c_stext_parser = VSimpleText <$> concat <$> many (text_parser_base "]\\:" False)
+
+--
+
+just_one p s = when (length s /= 1) Nothing >> (parseMaybe p $ head s)
+
+list_of  p s = fmap VList $ sequence $ map (parseMaybe p) s
+
+elist_of p s = if length s == 1 && null (head s) then Just VNone else list_of p s
+
+point_list_of  p = list_of  $ point_list_helper p
+
+point_elist_of p = elist_of $ point_list_helper p
+
+compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
+
+--
+
+parseMaybe p s = case parse (p <* eof) "" s of
+  Left  err -> Nothing
+  Right val -> Just val
+
+text_parser_base escape_chars keep_eol = 
+    try (bslash *> eol *> return "")     <|>
+    try (bslash *> space *> return " ")  <|>
+    try (bslash *> (return <$> anyChar)) <|>
+    try (eol_parser keep_eol)            <|>
+    try (space *> return " ")            <|>
+    return <$> noneOf escape_chars
+  where
+      bslash = char '\\'
+      eol_parser keep_eol
+        | keep_eol   = eol
+        | otherwise  = return <$> oneOf ""
+      eol = try (string "\n\r") <|>
+            try (string "\r\n") <|>
+            string "\n"         <|>
+            string "\r"
+
+point_list_helper p = try (compose p p) <|> p
 
