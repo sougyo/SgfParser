@@ -24,9 +24,11 @@ module SgfParser
 
 import Text.ParserCombinators.Parsec
 import Control.Applicative ((<*), (*>), (<*>), (<$>))
-import Text.Parsec.Prim (tokenPrim, getPosition)
+import Text.Parsec.Prim (tokenPrim, getPosition, runPT)
 import Text.Parsec.Pos (SourcePos)
 import Control.Monad (sequence, when)
+import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Writer.Lazy (runWriter, tell)
 
 data MToken = LeftParenthes       |
               RightParenthes      |
@@ -73,7 +75,8 @@ data ValueType p m s =
 
 --
 
-sgfParser dict = SgfTreeNode [] <$> many1 gameTree
+sgfParser dict = do lift $ tell "start"
+                    SgfTreeNode [] <$> many1 gameTree
   where
     gameTree  = between (token LeftParenthes) (token RightParenthes) $
                   makeGameTree <$> many1 node <*> many gameTree
@@ -198,21 +201,19 @@ base_dict point_parser move_parser stone_parser = [
 
 parseSgf dict input = parseMTokenSgf dict $ parseCharSgf input
   where
-    parseMTokenSgf dict input = case parse (sgfParser dict) "" input of
+    parseMTokenSgf dict input = let (ret, log) = runWriter $ runPT (sgfParser dict) () "" input
+                                in case ret of
       Left  err -> putStrLn $ show err
-      Right val -> putStrLn $ show $ val
+      Right val -> putStrLn $ show val ++ "\nWarning: " ++ log
     parseCharSgf input = case parse sgfTokenParser "" input of
       Left err  -> []
       Right val -> val
     sgfTokenParser = many1 $ spaces *> mnToken
     mnToken = MNode <$> getPosition <*> mToken
+
 --
 
 none_parser = string "" *> return VNone
-
-numstr_parser = (++) <$> plus_minus <*> many1 digit
-  where plus_minus = try (char '+' *> return "") <|>
-                     option "" (string "-")
 
 number_parser = VNumber . read <$> numstr_parser
 
@@ -252,6 +253,10 @@ compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
 parseMaybe p s = case parse (p <* eof) "" s of
   Left  err -> Nothing
   Right val -> Just val
+
+numstr_parser = (++) <$> plus_minus <*> many1 digit
+  where plus_minus = try (char '+' *> return "") <|>
+                     option "" (string "-")
 
 text_parser_base escape_chars keep_eol = 
     try (bslash *> eol *> return "")     <|>
