@@ -29,4 +29,4 @@ instance (Show a) => Show (SgfTreeNode a) where
                               in str ++ helper4 (d + length str) fs
 
 
-main = parseSgf igo_dict "(;HA[33333];TB[cc][ac:aa];LB[cc:a\\:a];GC[aa:\na];ON[aa\na];CR[cc][aa:aa][aa];SZ[+33333:-32494329](;W[aa])(;US[hoge\nho\tge]))"
+main = parseSgf igo_dict "(;HA[33333];TB[cc][cac:aa];LB[cc:a\\:a];GC[aa:\na];ON[aa\na];CR[ccc][aa:aa][aa];SZ[+33333:-32494329](;W[aa])(;US[hoge\nho\tge]))"

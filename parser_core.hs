@@ -59,33 +59,36 @@ data VColorType = VBlack | VWhite
   deriving (Show, Eq)
 
 data ValueType p m s =
-    VNone                   |
-    VNumber     Integer     |
-    VReal       Double      |
-    VDouble     VDoubleType |
-    VColor      VColorType  |
-    VText       String      |
-    VSimpleText String      |
-    VPoint      p           |
-    VMove       m           |
-    VStone      s           |
-    VList [ValueType p m s] |
-    VPair (ValueType p m s, ValueType p m s)
+    VNone                                    |
+    VNumber     Integer                      |
+    VReal       Double                       |
+    VDouble     VDoubleType                  |
+    VColor      VColorType                   |
+    VText       String                       |
+    VSimpleText String                       |
+    VPoint      p                            |
+    VMove       m                            |
+    VStone      s                            |
+    VList [ValueType p m s]                  |
+    VPair (ValueType p m s, ValueType p m s) |
+    VParseError  [String]                    |
+    VUnknownProp [String]
   deriving (Show, Eq)
 
 --
 
-sgfParser dict = do lift $ tell "start"
-                    SgfTreeNode [] <$> many1 gameTree
+sgfParser dict = SgfTreeNode [] <$> many1 gameTree
   where
     gameTree  = between (token LeftParenthes) (token RightParenthes) $
                   makeGameTree <$> many1 node <*> many gameTree
     node      = token Semicolon *> many property
     property  = do ident <- propIdent
                    pvals <- many1 propValue
-                   case (str2val dict) ident pvals of
-                     Just x  -> return $ SProp ident x
-                     Nothing -> fail $ "failed to parse " ++ show pvals
+                   fmap (SProp ident) $ return $ case lookup ident dict of
+                     Just p  -> case p pvals of
+                       Just x  -> x
+                       Nothing -> VParseError pvals
+                     Nothing -> VUnknownProp pvals
     makeGameTree (n:ns) ts
       | null ns   = SgfTreeNode n ts
       | otherwise = SgfTreeNode n [makeGameTree ns ts]
@@ -97,9 +100,6 @@ sgfParser dict = do lift $ tell "start"
     propValue = gen_p $ \n -> case m_token n of
                   BracketBlock s -> Just s
                   _              -> Nothing
-    str2val dict ident strs = case (lookup ident dict) of
-      Just p  -> p strs
-      Nothing -> Nothing
 
 mToken = mtoken '(' LeftParenthes  <|>
          mtoken ')' RightParenthes <|>
