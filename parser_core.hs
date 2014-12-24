@@ -71,7 +71,7 @@ data ValueType p m s =
     VPair (ValueType p m s, ValueType p m s) |
     VParseError  [String]                    |
     VUnknownProp [String]
-  deriving (Show, Eq)
+  deriving (Eq)
 
 --
 
@@ -215,9 +215,9 @@ list_of  p s = fmap VList $ sequence $ map (parseMaybe p) s
 
 elist_of p s = if length s == 1 && null (head s) then Just VNone else list_of p s
 
-point_list_of  p = list_of  $ point_list_helper p
+point_list_of  p = list_of  $ point_list_elem p
 
-point_elist_of p = elist_of $ point_list_helper p
+point_elist_of p = elist_of $ point_list_elem p
 
 compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
 
@@ -248,7 +248,7 @@ text_parser_base escape_chars keep_eol =
             string "\n"         <|>
             string "\r"
 
-point_list_helper p = try (compose p p) <|> p
+point_list_elem p = try (compose p p) <|> p
 
 --
 
