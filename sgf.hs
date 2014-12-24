@@ -16,6 +16,7 @@ instance Eq (Hoge a) where
 instance Ord (Hoge a) where
   compare a b = compare (h_dx a) (h_dx b)
 
+-- UGLY CODE!!
 instance (Show a) => Show (SgfTreeNode a) where
   show tn = show_matrix $ make_matrix tn
     where
