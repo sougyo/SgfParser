@@ -1,3 +1,5 @@
 *.hi
 *.o
 sgf
+*.sgf
+sgf_files

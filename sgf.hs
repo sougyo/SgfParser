@@ -1,6 +1,7 @@
 import SgfParser
 import SgfIgoParser
 import Data.List (intercalate)
+import System.Environment(getArgs)
 
 data Hoge a = Hoge {
   h_dx   :: Int,
@@ -28,5 +29,9 @@ instance (Show a) => Show (SgfTreeNode a) where
                          else let str = show_snode . h_node $ f
                               in str ++ helper4 (d + length str) fs
 
-
-main = parseSgf igo_dict "(;HA[33333];TB[cc][cac:aa];LB[cc:a\\:a];GC[aa:\na];ON[aa\na];CR[ccc][aa:aa][aa];SZ[+33333:-32494329](;W[aa])(;US[hoge\nho\tge]))"
+main = do fname <- fmap head getArgs
+          inpStr <- readFile fname
+          case parseSgf igo_dict inpStr of
+            Left  err -> putStrLn $ show err
+            Right val -> putStrLn $ show val
+    
