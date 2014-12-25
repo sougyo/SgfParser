@@ -1,53 +1,62 @@
 import SgfParser
 import SgfIgoParser
-import Data.List (intercalate, sort)
+import Data.List (intercalate, sort, sortBy)
 import System.Environment(getArgs)
+import Control.Monad.Trans.Writer.Lazy
+import Control.Monad (when)
 
-data Hoge a = Hoge {
-  h_dx   :: Int,
-  h_dy   :: Int,
+data Cell a = Cell {
+  c_x    :: Int,
+  c_y    :: Int,
   h_node :: [SProp a]
 } deriving (Show)
 
-instance Eq (Hoge a) where
-  a == b = (h_dx a) == (h_dx b) && (h_dy a) == (h_dy b)
-  
+sortBy_x = sortBy $ \a b -> compare (c_x a) (c_x b)
 
-instance Ord (Hoge a) where
-  compare a b = compare (h_dx a) (h_dx b)
+make_matrix t = process_subtree 0 0 t
+  where
+    process_subtree x y t = let rest = concat $ process_children x (y + 1) (s_children t)
+                            in Cell x y (s_node t) : rest 
+    process_children _ _ []     = []
+    process_children x y (t:ts) = let cs = process_subtree x y t
+                                  in (:) cs $ process_children (max_x cs + 1) y ts
+    max_x cs = foldr max 0 $ map c_x cs
+   
+show_matrix cs = execWriter $ do next_line 0 cs
+  where
+    next_line l cs = do let f1 = sortBy_x $ filter (\x -> c_y x == l)     cs
+                        let f2 = map c_x  $ filter (\x -> c_y x == l + 1) cs
+                        when (not $ null f1) $ do trace_line 0 f1 f2
+                                                  tell "\n"
+                                                  next_line (l + 1) cs
+    trace_line _   []         _  = return ()
+    trace_line col ess@(e:es) f2 = do
+        s_len <- padding_space $ width * (c_x e) - col
+        n_len <- tell_node e
+        h_len <- write_edges (col + s_len + n_len) $ sort $ filter (children_filter ess) f2
+        trace_line (col + s_len + n_len + h_len) es f2
+    padding_space n
+      | n <= 0    = return 0
+      | otherwise = do tell $ take n $ repeat ' '
+                       return n
+    children_filter (e:es) x = c_x e < x && (null es || x < (c_x $ head es))
+    tell_node n = let str = show_snode . h_node $ n
+                  in tell str >> (return $ length str)
+    write_edges _ []     = return 0
+    write_edges c (x:xs) = do e_len <- write_edge $ x * width - c
+                              c_len <- write_edges (c + e_len) xs
+                              return $ e_len + c_len
+    write_edge n
+        | n <= 0    = return 0
+        | otherwise = do tell $ take (n + 2) $ repeat '-'
+                         tell "+"
+                         return $ n + 3
+    width = 10
 
--- UGLY CODE!!
 instance (Show a) => Show (SgfTreeNode a) where
   show tn = show_matrix $ make_matrix tn
-    where
-      make_matrix tn = helper1 0 0 tn
-      helper1 dx dy (SgfTreeNode n ts) = let tmp = helper2 dx (dy + 1) ts
-                                         in  Hoge dx dy n : (concat tmp)
-      helper2 _  _  []     = []
-      helper2 dx dy (t:ts) = let z = helper1 dx dy t
-                             in (:) z $ helper2 (max_dx z + 1) dy ts
-      max_dx z = foldr max 0 $ map h_dx z
-      show_matrix hoges = helper3 0 hoges
-      helper3 d hoges = let filtered1 = sort $ filter (\x -> h_dy x == d) hoges in
-                        let filtered2 = map h_dx (filter (\x -> h_dy x == (d+1)) hoges)
-                        in if null filtered1 then "" else 
-                           show_filtered filtered1 filtered2 ++ "\n" ++ (helper3 (d + 1) hoges)
-      show_snode ps = intercalate "&" $ map show_sprop ps
-      show_filtered filtered1 filtered2 = helper4 0 filtered1 filtered2
-      helper4 _ [] _   = ""
-      helper4 d (f:[]) filtered2 = let z = foldr max 0 filtered2 in
-                                   if d < 10 * h_dx f then " " ++ helper4 (d + 1) [f] filtered2
-                                   else let str = (show_snode . h_node $ f) in
-                                     str ++ (helper5 ((z - h_dx f) * 10 - length str))
-      helper4 d (f1:f2:fs) filtered2 = if d < 10 * h_dx f1 then " " ++ helper4 (d + 1) (f1:(f2:fs)) filtered2
-                                       else let str = show_snode . h_node $ f1 in
-                                       let z = foldr max 0 $ filter (<(h_dx f2)) filtered2 in
-                                       let y = (z - h_dx f1) * 10 - length str
-                                       in str ++ (helper5 y) ++ helper4 (d + (if y > 0 then y else 0) + length str) (f2:fs) filtered2
-      helper5 n
-        | n <= 0    = ""
-        | otherwise = take n $ repeat '-'
 
+show_snode ps = intercalate "&" $ map show_sprop ps
 show_sprop p = (s_ident p) ++ "[" ++ show (s_blocks p) ++ "]"
 
 instance Show IgoMove where
