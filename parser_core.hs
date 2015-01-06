@@ -73,7 +73,6 @@ data ValueType p m s =
     VUnknownProp [String]
   deriving (Eq)
 
---
 
 sgfParser dict = SgfTreeNode [] <$> many1 gameTree
   where
@@ -99,7 +98,6 @@ sgfParser dict = SgfTreeNode [] <$> many1 gameTree
                   BracketBlock s -> Just s
                   _              -> Nothing
 
---
 
 base_dict point_parser move_parser stone_parser = [
     -- Move Properties
@@ -184,7 +182,6 @@ base_dict point_parser move_parser stone_parser = [
     ("VW", point_elist_of point_parser)
   ]
 
---
 
 none_parser = string "" *> return VNone
 
@@ -207,7 +204,6 @@ stext_parser   = VSimpleText <$> concat <$> many (text_parser_base "]\\"  False)
 
 c_stext_parser = VSimpleText <$> concat <$> many (text_parser_base "]\\:" False)
 
---
 
 just_one p s = when (length s /= 1) Nothing >> (parseMaybe p $ head s)
 
@@ -220,6 +216,22 @@ point_list_of  p = list_of  $ point_list_elem p
 point_elist_of p = elist_of $ point_list_elem p
 
 compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
+
+
+parseSgf dict input = case parse (spaces *> sgfTokenParser <* eof) "" input of
+                        Left  err -> Left err
+                        Right val -> parse (sgfParser dict) "" val
+  where
+    sgfTokenParser = many1 $ MNode <$> getPosition <*> mToken <* spaces
+    mToken = mtoken '(' LeftParenthes  <|>
+             mtoken ')' RightParenthes <|>
+             mtoken ';' Semicolon      <|>
+             bracketBlock              <|>
+             ucWord
+    mtoken c m   = try $ char c *> return m
+    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
+    ucWord       = UcWord <$> many1 upper
+    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
 
 --
 
@@ -249,21 +261,4 @@ text_parser_base escape_chars keep_eol =
             string "\r"
 
 point_list_elem p = try (compose p p) <|> p
-
---
-
-parseSgf dict input = case parse (spaces *> sgfTokenParser <* eof) "" input of
-                        Left  err -> Left err
-                        Right val -> parse (sgfParser dict) "" val
-  where
-    sgfTokenParser = many1 $ MNode <$> getPosition <*> mToken <* spaces
-    mToken = mtoken '(' LeftParenthes  <|>
-             mtoken ')' RightParenthes <|>
-             mtoken ';' Semicolon      <|>
-             bracketBlock              <|>
-             ucWord
-    mtoken c m   = try $ char c *> return m
-    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
-    ucWord       = UcWord <$> many1 upper
-    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
 
