@@ -2,7 +2,7 @@ SGF(Smart Game Format) Parser for haskell  **[Under development]**
 
 Example:
 
-```haskell:test.hs
+```hs:test.hs
 import SgfParser
 import SgfUtil
 
