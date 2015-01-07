@@ -1,7 +1,7 @@
+module SgfUtil (show) where
+
 import SgfParser
-import SgfIgoParser
 import Data.List (intercalate, sort, sortBy)
-import System.Environment(getArgs)
 import Control.Monad.Trans.Writer.Lazy
 import Control.Monad (when)
 
@@ -10,8 +10,6 @@ data Cell a = Cell {
   c_y    :: Int,
   c_node :: [SProp a]
 } deriving (Show)
-
-sortBy_x = sortBy $ \a b -> compare (c_x a) (c_x b)
 
 make_matrix t = process_subtree 0 0 t
   where
@@ -53,12 +51,12 @@ show_matrix cs = execWriter $ do next_line 0 cs
                          tell "+"
                          return $ n + 3
     width = 10
+    sortBy_x = sortBy $ \a b -> compare (c_x a) (c_x b)
+    show_snode ps = intercalate "&" $ map show_sprop ps
+    show_sprop p = (s_ident p) ++ "[" ++ show (s_blocks p) ++ "]"
 
 instance (Show a) => Show (SgfTreeNode a) where
   show tn = show_matrix $ make_matrix tn
-
-show_snode ps = intercalate "&" $ map show_sprop ps
-show_sprop p = (s_ident p) ++ "[" ++ show (s_blocks p) ++ "]"
 
 instance Show IgoMove where
   show (IgoMove (x, y)) = x:y:""
@@ -78,10 +76,3 @@ instance (Show p, Show m, Show s) => Show (ValueType p m s) where
   show (VPair x)        = show x
   show (VParseError x)  = "!P"
   show (VUnknownProp x) = "!U"
-
-main = do fname <- fmap head getArgs
-          inpStr <- readFile fname
-          case parseSgf igo_dict inpStr of
-            Left  err -> putStrLn $ show err
-            Right val -> putStrLn $ show val
-    

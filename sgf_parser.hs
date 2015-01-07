@@ -4,21 +4,9 @@ module SgfParser
     VDoubleType(..),
     VColorType(..),
     ValueType(..),
-    just_one,
-    list_of,
-    elist_of,
-    point_list_of,
-    point_elist_of,
-    compose,
-    none_parser,
-    number_parser,
-    real_parser,
-    double_parser,
-    color_parser,
-    text_parser,
-    stext_parser,
-    c_stext_parser,
-    base_dict,
+    IgoMove(..),
+    base_parser,
+    igo_parser,
     parseSgf
   ) where
 
@@ -27,18 +15,6 @@ import Control.Applicative ((<*), (*>), (<*>), (<$>))
 import Text.Parsec.Prim (tokenPrim, getPosition)
 import Text.Parsec.Pos (SourcePos)
 import Control.Monad (sequence, when)
-
-data MToken = LeftParenthes       |
-              RightParenthes      |
-              Semicolon           |
-              BracketBlock String |
-              UcWord String
-  deriving (Show, Eq)
-
-data MNode = MNode {
-  m_position :: SourcePos,
-  m_token    :: MToken
-} deriving (Show, Eq)
 
 data SProp a = SProp {
   s_ident  :: String,
@@ -73,6 +49,25 @@ data ValueType p m s =
     VUnknownProp [String]
   deriving (Eq)
 
+newtype IgoMove = IgoMove (Char, Char) deriving (Eq)
+type IgoType = ValueType IgoMove IgoMove IgoMove
+
+
+parseSgf dict input = case parse (spaces *> sgfTokenParser <* eof) "" input of
+                        Left  err -> Left err
+                        Right val -> parse (sgfParser dict) "" val
+  where
+    sgfTokenParser = many1 $ MNode <$> getPosition <*> mToken <* spaces
+    mToken = mtoken '(' LeftParenthes  <|>
+             mtoken ')' RightParenthes <|>
+             mtoken ';' Semicolon      <|>
+             bracketBlock              <|>
+             ucWord
+    mtoken c m   = try $ char c *> return m
+    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
+    ucWord       = UcWord <$> many1 upper
+    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
+
 
 sgfParser dict = SgfTreeNode [] <$> many1 gameTree
   where
@@ -99,7 +94,7 @@ sgfParser dict = SgfTreeNode [] <$> many1 gameTree
                   _              -> Nothing
 
 
-base_dict point_parser move_parser stone_parser = [
+base_parser point_parser move_parser stone_parser = [
     -- Move Properties
     ("B" , just_one move_parser),
     ("KO", just_one none_parser),
@@ -182,6 +177,20 @@ base_dict point_parser move_parser stone_parser = [
     ("VW", point_elist_of point_parser)
   ]
 
+igo_parser :: [(String, [String] -> Maybe IgoType)]
+igo_parser = base ++ igo_props
+  where
+    base = base_parser point_parser move_parser stone_parser
+    point_parser = VPoint <$> igo_move_parser
+    move_parser  = VMove  <$> igo_move_parser
+    stone_parser = VStone <$> igo_move_parser
+    igo_move_parser = fmap IgoMove $ (,) <$> letter <*> letter
+    igo_props = [
+      ("HA", just_one number_parser),
+      ("KM", just_one real_parser),
+      ("TB", point_elist_of point_parser),
+      ("TW", point_elist_of point_parser) ]
+
 
 none_parser = string "" *> return VNone
 
@@ -217,23 +226,19 @@ point_elist_of p = elist_of $ point_list_elem p
 
 compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
 
-
-parseSgf dict input = case parse (spaces *> sgfTokenParser <* eof) "" input of
-                        Left  err -> Left err
-                        Right val -> parse (sgfParser dict) "" val
-  where
-    sgfTokenParser = many1 $ MNode <$> getPosition <*> mToken <* spaces
-    mToken = mtoken '(' LeftParenthes  <|>
-             mtoken ')' RightParenthes <|>
-             mtoken ';' Semicolon      <|>
-             bracketBlock              <|>
-             ucWord
-    mtoken c m   = try $ char c *> return m
-    bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
-    ucWord       = UcWord <$> many1 upper
-    text         = fmap concat $ many $ try (string "\\]") <|> (return <$> noneOf "]")
-
 --
+
+data MToken = LeftParenthes       |
+              RightParenthes      |
+              Semicolon           |
+              BracketBlock String |
+              UcWord String
+  deriving (Show, Eq)
+
+data MNode = MNode {
+  m_position :: SourcePos,
+  m_token    :: MToken
+} deriving (Show, Eq)
 
 parseMaybe p s = case parse (p <* eof) "" s of
   Left  err -> Nothing
