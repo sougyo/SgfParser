@@ -1,5 +1,5 @@
 *.hi
 *.o
-test
+sample
 *.sgf
 sgf_files

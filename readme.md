@@ -2,7 +2,7 @@ SGF(Smart Game Format) Parser for haskell  **[Under development]**
 
 Example:
 
-```hs:test.hs
+```sample.hs
 import SgfParser
 import SgfUtil
 
@@ -13,7 +13,7 @@ main = let input_str = "( ;B[cc]  ;W[aa] (;W[aa] ;B[bb])(;W[bb])(;W[ab])))"
 ```
 
 ```
-# ./test
+# ./sample
 B[cc]
 W[aa]-------+---------+
 W[aa]     W[bb]     W[ab]

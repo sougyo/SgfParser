@@ -8,13 +8,13 @@ import Control.Monad (when)
 data Cell a = Cell {
   c_x    :: Int,
   c_y    :: Int,
-  c_node :: [SProp a]
+  c_node :: [SgfProperty a]
 } deriving (Show)
 
 make_matrix t = process_subtree 0 0 t
   where
-    process_subtree x y t = let rest = concat $ process_children x (y + 1) (s_children t)
-                            in Cell x y (s_node t) : rest 
+    process_subtree x y t = let rest = concat $ process_children x (y + 1) (sgf_children t)
+                            in Cell x y (sgf_node t) : rest 
     process_children _ _ []     = []
     process_children x y (t:ts) = let cs = process_subtree x y t
                                   in (:) cs $ process_children (max_x cs + 1) y ts
@@ -53,15 +53,15 @@ show_matrix cs = execWriter $ do next_line 0 cs
     width = 10
     sortBy_x = sortBy $ \a b -> compare (c_x a) (c_x b)
     show_snode ps = intercalate "&" $ map show_sprop ps
-    show_sprop p = (s_ident p) ++ "[" ++ show (s_blocks p) ++ "]"
+    show_sprop p = (sgf_ident p) ++ "[" ++ show (sgf_blocks p) ++ "]"
 
 instance (Show a) => Show (SgfTreeNode a) where
   show tn = show_matrix $ make_matrix tn
 
-instance Show IgoMove where
-  show (IgoMove (x, y)) = x:y:""
+instance Show IgoMoveType where
+  show (IgoMoveType (x, y)) = x:y:""
 
-instance (Show p, Show m, Show s) => Show (ValueType p m s) where
+instance (Show p, Show m, Show s) => Show (SgfValueType p m s) where
   show VNone            = ""
   show (VNumber x)      = show x
   show (VReal x)        = show x
@@ -73,6 +73,6 @@ instance (Show p, Show m, Show s) => Show (ValueType p m s) where
   show (VMove x)        = show x
   show (VStone x)       = show x
   show (VList x)        = show x
-  show (VPair x)        = show x
-  show (VParseError x)  = "!P"
-  show (VUnknownProp x) = "!U"
+  show (VComposition x) = show x
+  show (VParseError x)  = "*ParseError*"
+  show (VUnknownProp x) = "*UnknownProp*"

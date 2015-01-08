@@ -1,13 +1,27 @@
 module SgfParser
-  ( SProp(..),
+  ( SgfProperty(..),
     SgfTreeNode(..),
-    VDoubleType(..),
-    VColorType(..),
-    ValueType(..),
-    IgoMove(..),
+    SgfDoubleType(..),
+    SgfColorType(..),
+    SgfValueType(..),
+    IgoMoveType(..),
     base_parser,
     igo_parser,
-    parseSgf
+    parseSgf,
+    none_parser,
+    number_parser,
+    real_parser,
+    double_parser,
+    color_parser,
+    text_parser,
+    stext_parser,
+    c_stext_parser,
+    just_one,
+    list_of,
+    elist_of,
+    point_list_of,
+    point_elist_of,
+    compose
   ) where
 
 import Text.ParserCombinators.Parsec
@@ -16,53 +30,53 @@ import Text.Parsec.Prim (tokenPrim, getPosition)
 import Text.Parsec.Pos (SourcePos)
 import Control.Monad (sequence, when)
 
-data SProp a = SProp {
-  s_ident  :: String,
-  s_blocks :: a
+data SgfProperty a = SgfProperty {
+  sgf_ident  :: String,
+  sgf_blocks :: a
 } deriving (Show)
 
 data SgfTreeNode a = SgfTreeNode {
-  s_node     :: [SProp a],
-  s_children :: [SgfTreeNode a]
+  sgf_node     :: [SgfProperty a],
+  sgf_children :: [SgfTreeNode a]
 }
 
-data VDoubleType = VOne | VTwo
+data SgfDoubleType = SgfOne | SgfTwo
   deriving (Show, Eq)
 
-data VColorType = VBlack | VWhite
+data SgfColorType = SgfBlack | SgfWhite
   deriving (Show, Eq)
 
-data ValueType p m s =
-    VNone                                    |
-    VNumber     Integer                      |
-    VReal       Double                       |
-    VDouble     VDoubleType                  |
-    VColor      VColorType                   |
-    VText       String                       |
-    VSimpleText String                       |
-    VPoint      p                            |
-    VMove       m                            |
-    VStone      s                            |
-    VList [ValueType p m s]                  |
-    VPair (ValueType p m s, ValueType p m s) |
-    VParseError  [String]                    |
-    VUnknownProp [String]
+data SgfValueType p m s =
+      VNone
+    | VNumber      Integer
+    | VReal        Double
+    | VDouble      SgfDoubleType
+    | VColor       SgfColorType
+    | VText        String
+    | VSimpleText  String
+    | VPoint       p
+    | VMove        m
+    | VStone       s
+    | VList        [SgfValueType p m s]
+    | VComposition (SgfValueType p m s, SgfValueType p m s)
+    | VParseError  [String]
+    | VUnknownProp [String]
   deriving (Eq)
 
-newtype IgoMove = IgoMove (Char, Char) deriving (Eq)
-type IgoType = ValueType IgoMove IgoMove IgoMove
+newtype IgoMoveType = IgoMoveType (Char, Char) deriving (Eq)
+type IgoType = SgfValueType IgoMoveType IgoMoveType IgoMoveType
 
 
 parseSgf dict input = case parse (spaces *> sgfTokenParser <* eof) "" input of
                         Left  err -> Left err
                         Right val -> parse (sgfParser dict) "" val
   where
-    sgfTokenParser = many1 $ MNode <$> getPosition <*> mToken <* spaces
-    mToken = mtoken '(' LeftParenthes  <|>
-             mtoken ')' RightParenthes <|>
-             mtoken ';' Semicolon      <|>
-             bracketBlock              <|>
-             ucWord
+    sgfTokenParser = many1 $ PosToken <$> getPosition <*> mToken <* spaces
+    mToken =     mtoken '(' LeftParenthes
+             <|> mtoken ')' RightParenthes
+             <|> mtoken ';' Semicolon
+             <|> bracketBlock
+             <|> ucWord
     mtoken c m   = try $ char c *> return m
     bracketBlock = try $ between (char '[') (char ']') $ BracketBlock <$> text
     ucWord       = UcWord <$> many1 upper
@@ -76,7 +90,7 @@ sgfParser dict = SgfTreeNode [] <$> many1 gameTree
     node      = token Semicolon *> many property
     property  = do ident <- propIdent
                    pvals <- many1 propValue
-                   fmap (SProp ident) $ return $ case lookup ident dict of
+                   fmap (SgfProperty ident) $ return $ case lookup ident dict of
                      Just p  -> case p pvals of
                        Just x  -> x
                        Nothing -> VParseError pvals
@@ -84,12 +98,12 @@ sgfParser dict = SgfTreeNode [] <$> many1 gameTree
     makeGameTree (n:ns) ts
       | null ns   = SgfTreeNode n ts
       | otherwise = SgfTreeNode n [makeGameTree ns ts]
-    gen_p m   = tokenPrim (\c -> show c) (\pos c _cs -> m_position c) m
-    token c   = gen_p $ \n -> if m_token n == c then Just n else Nothing
-    propIdent = gen_p $ \n -> case m_token n of
+    gen_p m   = tokenPrim (\c -> show c) (\pos c _cs -> get_pos c) m
+    token c   = gen_p $ \n -> if get_token n == c then Just n else Nothing
+    propIdent = gen_p $ \n -> case get_token n of
                   UcWord s -> Just s
                   _        -> Nothing
-    propValue = gen_p $ \n -> case m_token n of
+    propValue = gen_p $ \n -> case get_token n of
                   BracketBlock s -> Just s
                   _              -> Nothing
 
@@ -184,7 +198,7 @@ igo_parser = base ++ igo_props
     point_parser = VPoint <$> igo_move_parser
     move_parser  = VMove  <$> igo_move_parser
     stone_parser = VStone <$> igo_move_parser
-    igo_move_parser = fmap IgoMove $ (,) <$> letter <*> letter
+    igo_move_parser = fmap IgoMoveType $ (,) <$> letter <*> letter
     igo_props = [
       ("HA", just_one number_parser),
       ("KM", just_one real_parser),
@@ -200,12 +214,12 @@ real_parser = fmap (VReal . read) $ (++) <$> numstr_parser <*> decimal_places
   where decimal_places = option "" $ (:) <$> char '.' <*> many1 digit
 
 double_parser = fmap VDouble $
-  char '1' *> return VOne <|>
-  char '2' *> return VTwo
+      char '1' *> return SgfOne
+  <|> char '2' *> return SgfTwo
 
 color_parser = fmap VColor $
-  char 'B' *> return VBlack <|>
-  char 'W' *> return VWhite
+      char 'B' *> return SgfBlack
+  <|> char 'W' *> return SgfWhite
 
 text_parser    = VText       <$> concat <$> many (text_parser_base "]\\"  True)
 
@@ -224,20 +238,21 @@ point_list_of  p = list_of  $ point_list_elem p
 
 point_elist_of p = elist_of $ point_list_elem p
 
-compose p1 p2 = fmap VPair $ (,) <$> p1 <* (char ':') <*> p2
+compose p1 p2 = fmap VComposition $ (,) <$> p1 <* (char ':') <*> p2
 
 --
 
-data MToken = LeftParenthes       |
-              RightParenthes      |
-              Semicolon           |
-              BracketBlock String |
-              UcWord String
+data SgfToken = 
+      LeftParenthes
+    | RightParenthes
+    | Semicolon
+    | BracketBlock String
+    | UcWord String
   deriving (Show, Eq)
 
-data MNode = MNode {
-  m_position :: SourcePos,
-  m_token    :: MToken
+data PosToken = PosToken {
+  get_pos   :: SourcePos,
+  get_token :: SgfToken
 } deriving (Show, Eq)
 
 parseMaybe p s = case parse (p <* eof) "" s of
@@ -249,21 +264,21 @@ numstr_parser = (++) <$> plus_minus <*> many1 digit
                      option "" (string "-")
 
 text_parser_base escape_chars keep_eol = 
-    try (bslash *> eol *> return "")     <|>
-    try (bslash *> space *> return " ")  <|>
-    try (bslash *> (return <$> anyChar)) <|>
-    try (eol_parser keep_eol)            <|>
-    try (space *> return " ")            <|>
-    return <$> noneOf escape_chars
+        try (bslash *> eol *> return "")
+    <|> try (bslash *> space *> return " ")
+    <|> try (bslash *> (return <$> anyChar))
+    <|> try (eol_parser keep_eol)
+    <|> try (space *> return " ")
+    <|> return <$> noneOf escape_chars
   where
       bslash = char '\\'
       eol_parser keep_eol
         | keep_eol   = eol
         | otherwise  = return <$> oneOf ""
-      eol = try (string "\n\r") <|>
-            try (string "\r\n") <|>
-            string "\n"         <|>
-            string "\r"
+      eol =     try (string "\n\r")
+            <|> try (string "\r\n")
+            <|> string "\n"
+            <|> string "\r"
 
 point_list_elem p = try (compose p p) <|> p
 
