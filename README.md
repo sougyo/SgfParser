@@ -2,7 +2,7 @@ SGF(Smart Game Format) Parser for haskell
 
 Example(sample.hs):
 
-```sample.hs
+```haskell
 import System.Environment (getArgs)
 import SgfParser
 import SgfUtil
@@ -23,12 +23,12 @@ W[ab]
 ```
 
 ```
-# ./sample "(;B[aa];W[ab](;W[ac])(;W[ad];B[ak](;B[af])(;B[aj]))(;W[ae]))"
+# ./sample "(;B[aa];W[ab](;B[ac])(;B[ad];W[ak](;B[af])(;B[aj]))(;B[ae]))"
 
 B[aa]
 W[ab]-------+-------------------+
-W[ac]     W[ad]               W[ae]
-          B[ak]-------+
+B[ac]     B[ad]               B[ae]
+          W[ak]-------+
           B[af]     B[aj]
 ```
 
